@@ -649,6 +649,27 @@ class GaussianDiffusion(nn.Module):
         return ret
 
     @torch.no_grad()
+    def p_sample_loop_FI(self, shape, img, return_all_timesteps = False):
+        batch, device = shape[0], self.betas.device
+
+        #img = torch.randn(shape, device = device)
+        img = torchvision.io.read_image(img)
+        img.to(device)
+        imgs = [img]
+
+        x_start = None
+
+        for t in tqdm(reversed(range(0, self.num_timesteps)), desc = 'sampling loop time step', total = self.num_timesteps):
+            self_cond = x_start if self.self_condition else None
+            img, x_start = self.p_sample(img, t, self_cond)
+            imgs.append(img)
+
+        ret = img if not return_all_timesteps else torch.stack(imgs, dim = 1)
+
+        ret = self.unnormalize(ret)
+        return ret
+
+    @torch.no_grad()
     def ddim_sample(self, shape, return_all_timesteps = False):
         batch, device, total_timesteps, sampling_timesteps, eta, objective = shape[0], self.betas.device, self.num_timesteps, self.sampling_timesteps, self.ddim_sampling_eta, self.objective
 
@@ -696,6 +717,12 @@ class GaussianDiffusion(nn.Module):
         sample_fn = self.p_sample_loop if not self.is_ddim_sampling else self.ddim_sample
         return sample_fn((batch_size, channels, image_size, image_size), return_all_timesteps = return_all_timesteps)
 
+    @torch.no_grad()
+    def sampleFI(self, img, batch_size = 16, return_all_timesteps=False):
+        image_size, channels = self.image_size, self.channels
+        sample_fn = self.p_sample_loop_FI if not self.is_ddim_sampling else self.ddim_sample
+        return sample_fn((batch_size, channels, image_size, image_size), img, return_all_timesteps = return_all_timesteps)
+    
     @torch.no_grad()
     def interpolate(self, x1, x2, t = None, lam = 0.5):
         b, *_, device = *x1.shape, x1.device
