@@ -654,7 +654,13 @@ class GaussianDiffusion(nn.Module):
 
         #img = torch.randn(shape, device = device)
         img = torchvision.io.read_image(img)
+        pirnt(device)
+        s = img.data.shape[1]
+        import scipy
+        zscore_img = scipy.stats.zscore(img.data[0])
+        img = zscore_img.reshape(shape).float()
         img.to(device)
+        
         imgs = [img]
 
         x_start = None
@@ -678,6 +684,53 @@ class GaussianDiffusion(nn.Module):
         time_pairs = list(zip(times[:-1], times[1:])) # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
 
         img = torch.randn(shape, device = device)
+        imgs = [img]
+
+        x_start = None
+
+        for time, time_next in tqdm(time_pairs, desc = 'sampling loop time step'):
+            time_cond = torch.full((batch,), time, device = device, dtype = torch.long)
+            self_cond = x_start if self.self_condition else None
+            pred_noise, x_start, *_ = self.model_predictions(img, time_cond, self_cond, clip_x_start = True, rederive_pred_noise = True)
+
+            if time_next < 0:
+                img = x_start
+                imgs.append(img)
+                continue
+
+            alpha = self.alphas_cumprod[time]
+            alpha_next = self.alphas_cumprod[time_next]
+
+            sigma = eta * ((1 - alpha / alpha_next) * (1 - alpha_next) / (1 - alpha)).sqrt()
+            c = (1 - alpha_next - sigma ** 2).sqrt()
+
+            noise = torch.randn_like(img)
+
+            img = x_start * alpha_next.sqrt() + \
+                  c * pred_noise + \
+                  sigma * noise
+
+            imgs.append(img)
+
+        ret = img if not return_all_timesteps else torch.stack(imgs, dim = 1)
+
+        ret = self.unnormalize(ret)
+        return ret
+
+    @torch.no_grad()
+    def ddim_sampleFI(self,imgn, shape, return_all_timesteps = False):
+        batch, device, total_timesteps, sampling_timesteps, eta, objective = shape[0], self.betas.device, self.num_timesteps, self.sampling_timesteps, self.ddim_sampling_eta, self.objective
+
+        times = torch.linspace(-1, total_timesteps - 1, steps = sampling_timesteps + 1)   # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
+        times = list(reversed(times.int().tolist()))
+        time_pairs = list(zip(times[:-1], times[1:])) # [(T-1, T-2), (T-2, T-3), ..., (1, 0), (0, -1)]
+
+        import torchvision
+        img_ = torchvision.io.read_image(imgn)
+        import scipy
+        zscore_img = scipy.stats.zscore(img_.data[0])
+        img = torch.tensor(zscore_img.reshape(shape).float(),device=device)
+
         imgs = [img]
 
         x_start = None
