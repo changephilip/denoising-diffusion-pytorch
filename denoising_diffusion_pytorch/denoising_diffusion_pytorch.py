@@ -718,7 +718,7 @@ class GaussianDiffusion(nn.Module):
         return ret
 
     @torch.no_grad()
-    def ddim_sampleFI(self,imgn, shape, return_all_timesteps = False):
+    def ddim_sampleFI(self, shape, imgn, return_all_timesteps = False):
         batch, device, total_timesteps, sampling_timesteps, eta, objective = shape[0], self.betas.device, self.num_timesteps, self.sampling_timesteps, self.ddim_sampling_eta, self.objective
 
         times = torch.linspace(-1, total_timesteps - 1, steps = sampling_timesteps + 1)   # [-1, 0, 1, 2, ..., T-1] when sampling_timesteps == total_timesteps
@@ -773,7 +773,7 @@ class GaussianDiffusion(nn.Module):
     @torch.no_grad()
     def sampleFI(self, img, batch_size = 16, return_all_timesteps=False):
         image_size, channels = self.image_size, self.channels
-        sample_fn = self.p_sample_loop_FI if not self.is_ddim_sampling else self.ddim_sample
+        sample_fn = self.p_sample_loop_FI if not self.is_ddim_sampling else self.ddim_sampleFI
         return sample_fn((batch_size, channels, image_size, image_size), img, return_all_timesteps = return_all_timesteps)
     
     @torch.no_grad()
